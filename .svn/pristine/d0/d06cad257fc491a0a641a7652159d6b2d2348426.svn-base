@@ -1,0 +1,499 @@
+package com.tbse.algebro;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
+import org.anddev.andengine.entity.IEntity;
+import org.anddev.andengine.entity.modifier.MoveModifier;
+import org.anddev.andengine.entity.scene.Scene;
+import org.anddev.andengine.input.touch.TouchEvent;
+import org.anddev.andengine.util.modifier.IModifier;
+import org.anddev.andengine.util.modifier.IModifier.IModifierListener;
+
+import android.util.Log;
+import android.view.VelocityTracker;
+
+public class Expression {
+
+	public boolean isConstant;
+	public int value;
+	public ArrayList<Symbol> symbols;
+	public VelocityTracker velocityTracker;
+	Vector2 touchToCorner;
+	private MainGameActivity main;
+	// private int touchDownSymbolCode;
+	private int padding; // for small phone, moves icon out of under thumb
+	private int prevExpCount;
+	private UUID uid;
+	private long downtime;
+
+	public int getSize() {
+		return getExpressionSymbols().size();
+	}
+
+	public void insertExpression(Expression e, int index) {
+		// move the symbols apart
+		float origX = this.getX();
+
+		ArrayList<Symbol> movingLeft = new ArrayList<Symbol>(0);
+		ArrayList<Symbol> movingRight = new ArrayList<Symbol>(0);
+
+		Log.d("ab", "inserting into "
+				+ getExpressionSymbols().get(0).symbolCode);
+		Log.d("ab", "there are already " + getExpressionSymbols().size());
+		for (int i = 0; i < getExpressionSymbols().size(); i++) {
+			if (i < index) {
+				movingLeft.add(getExpressionSymbols().get(i));
+			} else {
+				movingRight.add(getExpressionSymbols().get(i));
+			}
+
+		}
+
+		Log.d("ab", movingLeft.size() + " are moving left");
+		Log.d("ab", movingRight.size() + " are moving right");
+
+		float distanceToPushY = this.getY() - e.getY();
+
+		for (Symbol s : getExpressionSymbols()) {
+			s.parentExpression = this;
+		}
+
+		for (Symbol s : movingLeft) {
+			Log.d("ab", "moving " + s.symbolCode + " left");
+			s.registerEntityModifier(new MoveModifier(1, s.getX(), s.getX()
+					- (s.getX()+getMain().getSymbolWidth()-e.getX()) / 2, s.getY(), s
+					.getY(), MainGameActivity.EASEFUNCTIONS[0]));
+		}
+
+		for (Symbol s : movingRight) {
+			Log.d("ab", "moving " + s.symbolCode + " right");
+			s.registerEntityModifier(new MoveModifier(1, s.getX(), s.getX()
+					+ (s.getX()+getMain().getSymbolWidth()-e.getX()) / 2, s.getY(), s
+					.getY(), MainGameActivity.EASEFUNCTIONS[0]));
+		}
+
+		// add symbols to internal list
+		Log.d("ab", "this exp symbols has len " + getExpressionSymbols().size());
+		if (index <= getExpressionSymbols().size()) {
+			for (Symbol s : e.getExpressionSymbols()) {
+				// if (!getExpressionSymbols().contains(s)) {
+				getExpressionSymbols().add(index, s);
+				// }
+			}
+
+			// see if there are duplicates
+			Set<Symbol> nodupes = new HashSet<Symbol>(getExpressionSymbols());
+			if (nodupes.size() < getExpressionSymbols().size())
+				Log.d("ab", "there are dups");
+
+		} else {
+			Log.e("ab", "trying to insert into a too-big index for this list");
+		}
+		Log.d("ab", "this exp symbols has len " + getExpressionSymbols().size());
+
+		for (Symbol s : getExpressionSymbols()) {
+			if (s.parentExpression != this)
+				s.parentExpression = this;
+		}
+
+		// attachChildren();
+		// registerTouchAreas();
+
+		// move the dragged expression in
+		Log.d("ab", "moving in: here: " + e.getX() + " to here " + origX
+				+ getMain().getSymbolWidth() * movingLeft.size());
+		registerEntityModifier(e.getX(), origX
+				+ getMain().getSymbolWidth() * movingLeft.size(), e.getY(),
+				e.getY() + distanceToPushY);
+
+	}
+
+	public void registerEntityModifier(float pFromX, float pToX, float pFromY,
+			float pToY) {
+		for (int i = 0; i < getExpressionSymbols().size(); i++) {
+			getExpressionSymbols().get(i).registerEntityModifier(
+					new MoveModifier(1,
+							getExpressionSymbols().get(i).getX(),
+							pToX// + w * i
+							, getExpressionSymbols().get(i).getY(), pToY,
+							MainGameActivity.EASEFUNCTIONS[0]));
+		}
+	}
+
+	public boolean collidesWith(Expression e) {
+		for (Symbol s : getExpressionSymbols()) {
+			for (Symbol t : e.getExpressionSymbols()) {
+				if (s.getUID() != t.getUID()) {
+					if (s.collidesWith(t))
+						return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	public int getPrevExpCount() {
+		return this.prevExpCount;
+	}
+
+	public void setPrevExpCount(int a) {
+		this.prevExpCount = a;
+	}
+
+	private enum NEXT_IN_TOUCH_CYCLE {
+		TOUCH_DOWN, TOUCH_UP
+	};
+
+	NEXT_IN_TOUCH_CYCLE nextInTouchCycle;
+
+	public ArrayList<Symbol> getExpressionSymbols() {
+		return this.symbols;
+	}
+
+	public boolean isRemovable() {
+		if (getExpressionSymbols() != null) {
+			if (getExpressionSymbols().size() >= 1) {
+				return getExpressionSymbols().get(0).isRemovable();
+			}
+		}
+		return false;
+	}
+
+	public Expression() {
+		this.symbols = new ArrayList<Symbol>(0);
+		this.touchToCorner = new Vector2(0, 0);
+		this.nextInTouchCycle = NEXT_IN_TOUCH_CYCLE.TOUCH_DOWN;
+		this.padding = -50; // touch padding
+		this.uid = UUID.randomUUID();
+	}
+
+	public UUID getUID() {
+		return this.uid;
+	}
+
+	public int getValue() {
+		return this.value;
+	}
+
+	public MainGameActivity getMain() {
+		if (this.main == null) {
+			Log.e("ab", "trying to get main but it's null");
+		}
+		return this.main;
+	}
+
+	public void setMain(MainGameActivity m) {
+		this.main = m;
+	}
+
+	public Scene getScene() {
+		return getMain().getScene();
+	}
+
+	public boolean isInASpecialArea(float x, float y) {
+		for (SpecialArea a : getMain().getSpecialAreas()) {
+			if (a.contains(x, y)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean isInASpecialArea(TouchEvent e) {
+		return isInASpecialArea(e.getX(), e.getY());
+	}
+
+	public float getSpeed() {
+		getVelocityTracker().computeCurrentVelocity(1000, 10000f); // pixels per
+																	// second
+		return new Vector2(getVelocityTracker().getXVelocity(),
+				getVelocityTracker().getYVelocity()).len();
+
+	}
+
+	public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
+			final float pTouchAreaLocalX, final float pTouchAreaLocalY,
+			Symbol symbol) {
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_DOWN) {
+
+			if (this.nextInTouchCycle != NEXT_IN_TOUCH_CYCLE.TOUCH_DOWN) {
+				Log.d("ab", "down is out of cycle");
+				return false;
+			} else {
+				this.nextInTouchCycle = NEXT_IN_TOUCH_CYCLE.TOUCH_UP;
+			}
+
+			this.downtime = System.currentTimeMillis();
+			// Log.d("ab", "down at " + downtime);
+
+			main.setExpressionCurrentlyBeingDragged(this);
+
+			// Log.d("ab", "getting new vel tracker");
+			getNewVelocityTracker();
+
+			getVelocityTracker().addMovement(pSceneTouchEvent.getMotionEvent());
+
+			symbol.setIsRemovable(true);
+
+			if (isInASpecialArea(pSceneTouchEvent)) {
+				// Log.d("ab", "is in a special area");
+
+				touchToCorner = new Vector2(symbol.getX()
+						- pSceneTouchEvent.getX(), symbol.getY()
+						- pSceneTouchEvent.getY());
+
+				// The copy stays behind
+				Symbol symbolCopy = new Symbol(symbol.getX(), symbol.getY(),
+						symbol.pTiledTextureRegion, symbol.getMain(),
+						symbol.symbolCode, false);
+				symbolCopy.parentExpression = new Expression();
+				symbolCopy.parentExpression.setMain(getMain());
+				symbolCopy.parentExpression.addSymbol(0, symbolCopy);
+				return true;
+
+			} else { // symbol touched on the board, should already be in an
+						// expression, use getX() and getY() for it
+				touchToCorner = new Vector2(getX() - pSceneTouchEvent.getX(),
+						getY() - pSceneTouchEvent.getY());
+
+				// if the screen is small, push it up and left so it won't
+				// be under the finger.
+			}
+
+		} else
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_MOVE) {
+			if (this.nextInTouchCycle != NEXT_IN_TOUCH_CYCLE.TOUCH_UP) {
+				Log.d("ab", "move is out of cycle ");
+				return false;
+			}
+
+			main.setExpressionCurrentlyBeingDragged(this);
+
+			getVelocityTracker().addMovement(pSceneTouchEvent.getMotionEvent());
+			getVelocityTracker().computeCurrentVelocity(1000, 10000f);
+
+			float factor = 50.0f / (1 + (float) Math
+					.exp(-(getSpeed() - 150) / 2));
+			if (factor < 0.1)
+				factor = 0.0f;
+
+			if (getExpressionSymbols().size() == 0) {
+				Log.e("ab", "trying to move an expression with no symbols");
+			}
+
+			setPosition(pSceneTouchEvent.getX() + touchToCorner.x + padding,
+					pSceneTouchEvent.getY() + touchToCorner.y + padding);
+
+		} else
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_UP) {
+
+			if (this.nextInTouchCycle != NEXT_IN_TOUCH_CYCLE.TOUCH_UP) {
+				Log.d("ab", "up is out of cycle");
+				return false;
+			} else {
+				this.nextInTouchCycle = NEXT_IN_TOUCH_CYCLE.TOUCH_DOWN;
+			}
+
+			main.setExpressionCurrentlyBeingDragged(this);
+
+			getMain().checkForCollisions();
+
+			long uptime = System.currentTimeMillis();
+			// Log.d("ab", "up at " + uptime);
+			// Log.d("ab", "diff of " + (uptime - this.downtime));
+
+			if (isInASpecialArea(pSceneTouchEvent)) {
+				if (uptime - this.downtime < 200) { // is a click
+
+					// Is in a special area and user has clicked on a tile,
+					// put it out in the middle.
+
+					Symbol symbolCopy = new Symbol(
+							getMain().getCameraWidth() >> 1, getMain()
+									.getCameraHeight() >> 1,
+							symbol.pTiledTextureRegion, symbol.getMain(),
+							symbol.symbolCode, true);
+					symbolCopy.parentExpression = new Expression();
+					symbolCopy.parentExpression.setMain(getMain());
+					symbolCopy.parentExpression.addSymbol(0, symbolCopy);
+
+					// else it's above the keyboard or the trash can
+
+				}
+				Log.d("ab", "is in a special area");
+				destroySelf();
+
+			} else {
+				// got a symbol already on the screen
+
+				getVelocityTracker().addMovement(
+						pSceneTouchEvent.getMotionEvent());
+
+				if (symbol.isRemovable()) {
+					getVelocityTracker().computeCurrentVelocity(1000, 10000f);
+					if (getSpeed() > 150) {
+						MoveModifier mm = new MoveModifier(1, getX(), getX()
+								+ 0.1f * getVelocityTracker().getXVelocity(),
+								getY(), getY() + 0.1f
+										* getVelocityTracker().getYVelocity(),
+								MainGameActivity.EASEFUNCTIONS[0]);
+
+						mm.addModifierListener(new IModifierListener<IEntity>() {
+
+							@Override
+							public void onModifierStarted(
+									IModifier<IEntity> arg0, IEntity arg1) {
+
+							}
+
+							@Override
+							public void onModifierFinished(
+									IModifier<IEntity> arg0, IEntity arg1) {
+
+								if (isInASpecialArea(getX(), getY())) {
+									Log.d("ab", "is in onModifierFinished");
+									destroySelf();
+								} else {
+									getMain().checkForCollisions();
+									getMain()
+											.resetExpressionCurrentlyBeingDragged();
+								}
+
+							}
+						});
+						registerEntityModifiers(mm);
+					}
+				}
+				getVelocityTracker().recycle();
+
+			}
+
+		}
+
+		return true;
+	}
+
+	private VelocityTracker getVelocityTracker() {
+		return this.velocityTracker;
+	}
+
+	private void registerEntityModifiers(MoveModifier m) {
+		for (Symbol s : getExpressionSymbols()) {
+			s.registerEntityModifier(m);
+		}
+	}
+
+	public void setValue(int value) {
+		this.value = value;
+	}
+
+	public float getX() {
+		float total = 0f;
+		if (getExpressionSymbols().size() == 0) {
+			Log.e("ab",
+					"there are no symbols in the expression, can't give getX()");
+			return 1;
+		}
+		for (Symbol s : getExpressionSymbols()) {
+			total += s.getX();
+		}
+		return total / getExpressionSymbols().size();
+	}
+
+	public float getY() {
+		float total = 0f;
+		if (getExpressionSymbols().size() == 0) {
+			Log.e("ab",
+					"there are no symbols in the expression, can't give getY()");
+			return 1;
+		}
+
+		for (Symbol s : getExpressionSymbols()) {
+			total += s.getY();
+		}
+		return total / getExpressionSymbols().size();
+	}
+
+	public void setPosition(final float expressionCornerX,
+			final float expressionCornerY) {
+		// Log.d("ab", "about to try to set pos for symbols");
+		for (final Symbol s : getExpressionSymbols()) {
+			// Log.d("ab", "setting pos for a symbol at " + expressionCornerX
+			// + ", " + expressionCornerY);
+			s.setPosition(expressionCornerX, expressionCornerY);
+		}
+	}
+
+	public void destroySelf() {
+		if (isRemovable()) {
+			Log.d("ab", "size of expressions is "
+					+ getMain().getOnScreenExpressions().size());
+			getMain().getExpressions().remove(this);
+			Log.d("ab", "[rem] size of expressions is "
+					+ getMain().getOnScreenExpressions().size());
+			for (final Symbol s : getExpressionSymbols()) {
+				s.getMain().getScene().postRunnable(new Runnable() {
+
+					@Override
+					public void run() {
+						// TODO Auto-generated method stub
+						s.destroySelf();
+					}
+				});
+			}
+		} else {
+			Log.e("ab", "tried to destroy an immovable object");
+		}
+	}
+
+	public boolean equals(Expression e) {
+		if (getUID() == e.getUID()) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public VelocityTracker getNewVelocityTracker() {
+		while (getVelocityTracker() == null) {
+			// Log.d("ab", "trying again to get a velocity tracker");
+			setVelocityTracker(VelocityTracker.obtain());
+		}
+		return getVelocityTracker();
+	}
+
+	public void setVelocityTracker(VelocityTracker vt) {
+		this.velocityTracker = vt;
+	}
+
+	public Expression addSymbol(int index, Symbol symbol) {
+		if (!getExpressionSymbols().contains(symbol)) {
+			getExpressionSymbols().add(symbol);
+		}
+		return this;
+	}
+
+	public void attachChildren() {
+		for (Symbol s : getExpressionSymbols()) {
+			if (s.hasParent() == false) {
+				getScene().attachChild(s);
+				// Log.d("ab", "attachChildren, attaching one");
+			} else {
+				// Log.d("ab", "attachChildren, has a parent already");
+			}
+		}
+	}
+
+	public void registerTouchAreas() {
+		for (Symbol s : getExpressionSymbols()) {
+			getScene().registerTouchArea(s);
+		}
+	}
+
+}

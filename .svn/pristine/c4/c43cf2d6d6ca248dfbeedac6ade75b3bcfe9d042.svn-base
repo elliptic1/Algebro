@@ -1,0 +1,250 @@
+package com.tbse.algebro;
+
+import java.util.ArrayList;
+
+import org.anddev.andengine.entity.modifier.MoveModifier;
+import org.anddev.andengine.entity.scene.Scene;
+import org.anddev.andengine.input.touch.TouchEvent;
+
+import android.util.Log;
+import android.view.VelocityTracker;
+
+public class Expression {
+
+	public boolean isConstant;
+	public int value;
+	public ArrayList<Symbol> symbols;
+	public VelocityTracker velocityTracker;
+	Vector2 touchToCorner;
+
+	public ArrayList<Symbol> getExpressionSymbols() {
+		return this.symbols;
+	}
+
+	public Expression() {
+		this.symbols = new ArrayList<Symbol>(0);
+		this.touchToCorner = new Vector2(0,0);
+	}
+
+	public int getValue() {
+		return this.value;
+	}
+
+	public void reanimate() {
+		// final VelocityTracker vt = getExpressionSymbols().get(0)
+		// .getVelocityTracker();
+		// if (vt != null) {
+		// vt.computeCurrentVelocity(1, 100);
+		//
+		// for (final Symbol symbolToReanimate : getExpressionSymbols()) {
+		// symbolToReanimate.registerEntityModifier(new MoveModifier(1,
+		// symbolToReanimate.getX(), symbolToReanimate.getX()
+		// * vt.getXVelocity(), symbolToReanimate.getY(),
+		// symbolToReanimate.getY() * vt.getYVelocity(),
+		// MainGameActivity.EASEFUNCTIONS[0]));
+		// }
+		// }
+	}
+
+	public MainGameActivity getMain() {
+		return getExpressionSymbols().get(0).getMain();
+	}
+
+	public Scene getScene() {
+		return getExpressionSymbols().get(0).getScene();
+	}
+
+	public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
+			final float pTouchAreaLocalX, final float pTouchAreaLocalY,
+			Symbol symbol) {
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_DOWN) {
+			if (getMain().getSpecialAreas().get(0)
+					.contains(pSceneTouchEvent.getX(), pSceneTouchEvent.getY())) {
+				Symbol symbolCopy = new Symbol(getX(), getY(),
+						symbol.pTiledTextureRegion, symbol.getScene(),
+						symbol.getMain(), symbol.symbolCode, true);
+				addSymbol(0, symbolCopy);
+			}
+
+			this.velocityTracker = VelocityTracker.obtain();
+			this.velocityTracker.addMovement(pSceneTouchEvent.getMotionEvent());
+			
+			touchToCorner = new Vector2(getX() - pSceneTouchEvent.getX(),
+					getY() - pSceneTouchEvent.getY());
+
+		}
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_MOVE) {
+
+			if (this.velocityTracker != null) {
+				this.velocityTracker.addMovement(pSceneTouchEvent
+						.getMotionEvent());
+			}
+
+			Log.d("ab", "" + touchToCorner.x + " --- " + touchToCorner.y);
+
+			setPosition(pSceneTouchEvent.getX() + touchToCorner.x,
+					pSceneTouchEvent.getY() + touchToCorner.y);
+			//
+		}
+
+		if (pSceneTouchEvent.getAction() == TouchEvent.ACTION_UP) {
+
+			if (getMain().getSpecialAreas().get(0)
+					.contains(pSceneTouchEvent.getX(), pSceneTouchEvent.getY())) {
+				destroySelf(getScene());
+			} else
+
+			if (getMain().getSpecialAreas().get(1)
+					.contains(pSceneTouchEvent.getX(), pSceneTouchEvent.getY())) {
+				destroySelf(getScene());
+			} else {
+
+				// got a symbol already on the screen
+
+				if (velocityTracker != null) {
+					velocityTracker.addMovement(pSceneTouchEvent
+							.getMotionEvent());
+					velocityTracker.recycle();
+				}
+
+			}
+
+		}
+
+		return true;
+	}
+
+	public void setValue(int value) {
+		this.value = value;
+	}
+
+	public float getX() {
+		float total = 0f;
+		for (Symbol s : getExpressionSymbols()) {
+			total += s.getX();
+		}
+		return total / getExpressionSymbols().size();
+	}
+
+	public float getY() {
+		float total = 0f;
+		for (Symbol s : getExpressionSymbols()) {
+			total += s.getY();
+		}
+		return total / getExpressionSymbols().size();
+	}
+
+	public void setPosition(final float x, final float y) {
+		for (final Symbol s : getExpressionSymbols()) {
+			// Vector2 centerToSymbol = new Vector2(s.getX() - this.getX(),
+			// s.getY() - this.getY());
+			s.getScene().postRunnable(new Runnable() {
+
+				@Override
+				public void run() {
+					// TODO Auto-generated method stub
+
+					s.registerEntityModifier(new MoveModifier(1, s.getX(), x, s
+							.getY(), y, MainGameActivity.EASEFUNCTIONS[1]));
+
+				}
+			});
+
+			// reanimate();
+
+		}
+	}
+
+	public void destroySelf(Scene scene) {
+		for (final Symbol s : symbols) {
+			scene.postRunnable(new Runnable() {
+				@Override
+				public void run() {
+					// TODO Auto-generated method stub
+					s.destroySelf();
+				}
+
+			});
+		}
+	}
+
+	public Expression addSymbol(int index, Symbol s) {
+		this.symbols.add(index, s);
+		return this;
+	}
+
+	public void checkForCollisions() {
+	}
+
+	public void checkForCollisions2() {
+
+		Symbol first = symbols.get(0);
+		Symbol last = symbols.get(symbols.size() - 1);
+
+		for (Symbol s : symbols) {
+			if (!first.equals(s) && !first.isANeighbor(s)
+					&& first.collidesWith(s) && (first.getX() > s.getX())) {
+
+				int distanceToPushX = Math.round(Math.abs(first.getX()
+						- s.getX()) / 2f);
+				int distanceToPushY = Math.round(Math.abs(first.getY()
+						- s.getY()) / 2f);
+				first.leftNeighbor = s;
+				if (first.getY() > s.getY()) {
+					distanceToPushY = -distanceToPushY;
+				}
+				for (Symbol t : symbols) {
+					if (!t.equals(first))
+						t.registerEntityModifier(new MoveModifier(1, t.getX(),
+								t.getX() + distanceToPushX, t.getY(), t.getY()
+										+ distanceToPushY,
+								MainGameActivity.EASEFUNCTIONS[1]));
+				}
+				s.registerEntityModifier(new MoveModifier(1, s.getX(), s.getX()
+						- distanceToPushX, s.getY(),
+						s.getY() - distanceToPushY,
+						MainGameActivity.EASEFUNCTIONS[1]));
+
+			}
+			if (!last.equals(s) && !last.isANeighbor(s) && last.collidesWith(s)
+					&& (last.getX() < s.getX())) {
+
+				int distanceToPushX = Math.round(Math.abs(first.getX()
+						- s.getX()) / 2f);
+				int distanceToPushY = Math.round(Math.abs(first.getY()
+						- s.getY()) / 2f);
+				last.rightNeighbor = s;
+				if (first.getY() > s.getY()) {
+					distanceToPushY = -distanceToPushY;
+				}
+				for (Symbol t : symbols) {
+					t.registerEntityModifier(new MoveModifier(1, t.getX(), t
+							.getX() + distanceToPushX, t.getY(), t.getY()
+							+ distanceToPushY,
+							MainGameActivity.EASEFUNCTIONS[1]));
+				}
+				s.registerEntityModifier(new MoveModifier(1, s.getX(), s.getX()
+						- distanceToPushX, s.getY(),
+						s.getY() - distanceToPushY,
+						MainGameActivity.EASEFUNCTIONS[1]));
+
+			}
+		}
+
+	}
+
+	public void attachChildren(Scene scene) {
+		for (Symbol s : symbols) {
+			scene.attachChild(s);
+		}
+	}
+
+	public void registerTouchAreas(Scene scene) {
+		for (Symbol s : symbols) {
+			scene.registerTouchArea(s);
+		}
+	}
+
+}
